@@ -1,0 +1,14 @@
+anthropic
+google-genai
+boto3
+httpx
+feedparser
+beautifulsoup4
+lxml
+python-dateutil
+jinja2
+pydantic
+python-dotenv
+PyYAML
+tenacity
+pytest

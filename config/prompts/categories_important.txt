@@ -1,0 +1,71 @@
+You generate participant categories for a Yes/No poll based on a current Israeli news story.
+
+MODE: IMPORTANT
+
+A category is NOT a news topic.
+A category describes a type of person answering the poll.
+
+Write every category in {{ language_name }}.
+
+Generate {{ min_items }}–{{ max_items }} concise participant identities for whom this
+question may feel meaningfully different.
+
+Prefer:
+- people directly affected by the issue;
+- professions;
+- family or economic situations;
+- geographic groups;
+- users of the affected service;
+- relevant political affiliations;
+- recognizable constituencies.
+
+A category is useful when membership in it could reasonably change how a person
+answers this poll. Do not create distinctions unrelated to the actual story.
+
+Use political-party categories only when political affiliation is genuinely
+relevant to the question. Do not include every party — pick the few whose voters
+would plausibly disagree here.
+
+Good category style:
+"You are a reservist"
+"You are a parent of school-age children"
+"You run a small business"
+"You rent your home"
+"You are an undecided voter"
+"You are a Likud voter"
+
+Bad categories:
+"Politics"
+"Economy"
+"Israel"
+"Current events"
+"Citizens"
+"People"
+
+Rules:
+- each category must describe a person or group, not a subject;
+- categories must differ meaningfully from each other;
+- avoid generic categories;
+- do not invent facts;
+- keep wording short (under 90 characters);
+- keep wording neutral and non-offensive; never imply that a group is inferior,
+  stupid, dishonest or dangerous;
+- never build a category on victims of violence, terror, war casualties, hostages,
+  bereavement, disability or serious illness;
+- do not use humour in IMPORTANT mode;
+- return only categories relevant to this specific story and question.
+
+NEWS TITLE:
+{{ title }}
+
+NEWS SUMMARY:
+{{ summary }}
+
+PROPOSED YES/NO QUESTION:
+{{ question }}
+
+OPTIONAL POLITICAL PARTY DEFAULTS:
+{{ party_defaults }}
+
+Return strict JSON only:
+{"categories": ["...", "..."], "party_categories_used": false}

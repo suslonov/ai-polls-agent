@@ -1,0 +1,220 @@
+# Non-secret configuration. Credentials live in .env (see .env.example).
+
+app:
+  timezone: "Asia/Jerusalem"
+  db_path: "~/polls_data/state.db"
+  render_path: "~/polls_data/rendered/index.html"
+  log_dir: "~/logs"
+  history_days_in_ui: 30
+  user_agent: "ai-polls-agent/1.0 (personal daily poll pipeline)"
+
+schedule:
+  # Informational; cron itself is installed manually.
+  # Entry point: `bash scripts/run.sh` (or `python -m src.scheduler_entry`).
+  local_time: "07:15"
+
+collection:
+  lookback_hours: 30
+  max_items_per_source: 30
+  max_candidates_before_prefilter: 250
+  prefilter_keep: 45
+  final_candidates_min: 10
+  final_candidates_max: 20
+  max_article_chars_for_selector: 800
+  # Body text kept per finalist. Generous on purpose: the chat prompt carries the
+  # raw article, not just the model's summary.
+  max_article_chars_for_enrichment: 9000
+  # How much of that raw text is pasted into {{NEWS_SUMMARY}}.
+  max_article_chars_for_prompt: 6000
+  prefilter_batch_size: 40
+  http_timeout_seconds: 20
+
+models:
+  # Cheap first-stage classifier / translator.
+  prefilter: "gemini-3.5-flash-lite"
+  prefilter_max_output_tokens: 8192
+
+  # Keep this aligned with ai-news-agent unless deliberately changed.
+  selector: "claude-sonnet-4-6"
+  selector_max_tokens: 8192
+  quiz_designer: "claude-sonnet-4-6"
+  quiz_designer_max_tokens: 2048
+
+kvasir:
+  # Region falls back to AWS_DEFAULT_REGION from .env when empty.
+  aws_region: ""
+  kv2_course_lambda_name: "kv2_course"
+  kv2_text_lambda_name: "kv2_text"
+  courses_bucket: "kv-courses"
+
+  # target_course_id (per language) and the template echo id come from .env:
+  #   KVASIR_COURSE_EN / KVASIR_COURSE_RU / KVASIR_TEMPLATE
+
+  # Creation starts as raw so it is not accidentally published before manual editing.
+  initial_component_status: "raw"
+
+  echo_editor_base_url: "https://quizly.pub/echo-edit?id="
+  scroll_quiz_base_url: "https://quizly.pub/scroll-quiz"
+
+publishing:
+  # Decision 0.4/4: the stable pages are files inside the kvasir_proto working
+  # tree. The two site directories are NOT mirrors — deploy.sh syncs kvasir.pub
+  # to s3://kv-html and quizly.pub to s3://quizly.pub, so a page appears on the
+  # host whose directory holds it. The poll pages live in kvasir.pub, hence one
+  # directory here and kvasir.pub public URLs. Add the quizly.pub directory (and
+  # switch the URLs) only when that site gets its own copy of the pages.
+  html_dirs:
+    - "/home/anton/git/kvasir_proto/src/html/kvasir.pub"
+  today_file_en: "daily-israel-polls-en.html"
+  today_file_ru: "daily-israel-polls-ru.html"
+
+  # Extensionless: CloudFront serves /daily-israel-polls-en from the .html file.
+  public_url_en: "https://kvasir.pub/daily-israel-polls-en"
+  public_url_ru: "https://kvasir.pub/daily-israel-polls-ru"
+
+  # Keep the newest N polls on each stable page. Publishing never removes an
+  # entry by itself - this cap is the only thing that drops old ones, and 0
+  # turns it off so the page keeps every poll ever published.
+  max_entries_per_page: 60
+
+  telegram_enabled: false
+
+# ── Categories ────────────────────────────────────────────────────────────────
+# A category is NOT an article topic. It is a person who could answer the poll
+# from their own perspective ("You are a reservist"), so the chat can compare how
+# different groups see the same question. They are generated per poll from the
+# final yes/no question; everything below is bounds, defaults and fallbacks.
+
+category_generation:
+  target_count: 8
+  min_count: 4          # below this the fallback library is used instead
+  cap: 10               # default cap on what we keep
+  max_count: 12         # hard upper bound
+  max_chars: 90         # a category is a short identity, not a sentence
+  near_duplicate_threshold: 0.6
+  max_tokens: 1500
+
+# Party categories are offered to the model only when the story is genuinely
+# political. The deployed template's `{{CATEGORIES DEFAULT={...}}}` payload is
+# the primary source of party names; this list is the fallback when the template
+# stops carrying one.
+parties:
+  category_template:
+    en: "You are a {party} voter"
+    ru: "Вы избиратель партии «{party}»"
+  undecided:
+    en: "You are an undecided voter"
+    ru: "Вы ещё не определились, за кого голосовать"
+  max_in_poll: 5
+  defaults:
+    en: [Likud, Yisrael Beiteinu, Shas, The Democrats, Torah Judaism,
+         Otzma Yehudit, Religious Zionism, Ra'am, Hadash–Ta'al, Blue and White]
+    ru: [Ликуд, НДИ, ШАС, Демократы, Яхадут ха-Тора,
+         Оцма Йехудит, Религиозный сионизм, РААМ, ХАДАШ-ТААЛЬ, Кахоль-Лаван]
+
+# Words that make a story political enough for party categories to be relevant.
+political_keywords:
+  en: [knesset, coalition, opposition, minister, government, election, vote,
+       voter, party, legislation, law, bill, court, judicial, conscription,
+       draft, reserve duty, settlement, shabbat, religion, budget, tax,
+       referendum, prime minister, mayor, municipal]
+  ru: [кнессет, коалиц, оппозиц, министр, правительств, выбор, голосован,
+       партия, партии, законопроект, закон, суд, судебн, призыв, резерв,
+       поселен, шаббат, религи, бюджет, налог, премьер, мэр, муниципал]
+
+# Last-resort categories, used only when generation fails or returns too few
+# valid entries. Keyed by domain; only a relevant group is ever used.
+stakeholder_fallbacks:
+  consumer:
+    en: [You shop for your household, You compare prices before buying,
+         You run a small business, You are raising a family]
+    ru: [Вы покупаете продукты для семьи, Вы сравниваете цены перед покупкой,
+         У вас малый бизнес, Вы растите детей]
+  transport:
+    en: [You commute by car every day, You use public transport every day,
+         You do not own a car, You cycle or ride a scooter in the city]
+    ru: [Вы каждый день ездите на работу на машине, Вы каждый день пользуетесь общественным транспортом,
+         У вас нет машины, Вы ездите по городу на велосипеде или самокате]
+  housing:
+    en: [You rent your home, You own an apartment, You are saving for a home,
+         You are a landlord]
+    ru: [Вы снимаете жильё, У вас своя квартира, Вы копите на квартиру,
+         Вы сдаёте квартиру]
+  security:
+    en: [You are a reservist, You employ reservists,
+         You live in a border community, You have family in the army]
+    ru: [Вы резервист, У вас работают резервисты,
+         Вы живёте в приграничном районе, У вас родные служат в армии]
+  education:
+    en: [You are a parent of school-age children, You are a teacher,
+         You are a university student, You pay for private lessons]
+    ru: [Вы родитель школьника, Вы учитель,
+         Вы студент, Вы платите за частные уроки]
+  health:
+    en: [You visit your kupat holim often, You care for an elderly relative,
+         You work in healthcare, You pay for private insurance]
+    ru: [Вы часто обращаетесь в больничную кассу, Вы ухаживаете за пожилым родственником,
+         Вы работаете в здравоохранении, У вас частная страховка]
+  general:
+    en: [You are raising a family, You run a small business,
+         You rent your home, You are a taxpayer without children]
+    ru: [Вы растите детей, У вас малый бизнес,
+         Вы снимаете жильё, Вы платите налоги и у вас нет детей]
+
+funny_fallbacks:
+  general:
+    en: [You already sent this to the family chat,
+         You are the one who reads the fine print,
+         You have an opinion before finishing the article,
+         You will check what people wrote in the comments]
+    ru: [Вы уже переслали это в семейный чат,
+         Вы тот человек, который читает мелкий шрифт,
+         У вас уже есть мнение, хотя вы ещё не дочитали новость,
+         Вы всё равно пойдёте читать комментарии]
+
+# PERSONA controls how the generated chat behaves. It is a different thing from
+# CATEGORIES, which are the participant identities the chat weighs answers against.
+personas:
+  important:
+    en: >
+      You are concise, analytical and practical.
+      Treat the poll as a way to compare how different affected groups view the issue.
+      Prefer concrete stakeholder perspectives over abstract topic labels.
+      Use political affiliation when it genuinely helps explain differences in opinion.
+      Frame a consequential yes/no question rooted in the supplied news; both answers
+      must remain plausible. Avoid sensationalism and generic categories.
+      Do not frame the poll as party-preference polling unless the user explicitly
+      turns the conversation in that direction.
+    ru: >
+      Ты пишешь кратко, аналитично и практично.
+      Опрос — это способ сравнить, как на вопрос смотрят разные затронутые группы.
+      Предпочитай конкретные перспективы участников абстрактным тематическим ярлыкам.
+      Используй партийную принадлежность только тогда, когда она действительно
+      объясняет разницу во мнениях.
+      Сформулируй содержательный вопрос с ответом да/нет, основанный на данной новости;
+      оба ответа должны оставаться осмысленными. Избегай сенсационности и общих категорий.
+      Не превращай опрос в опрос о партийных предпочтениях, если пользователь сам
+      не повернёт разговор в эту сторону.
+  funny:
+    en: >
+      You are witty, concise and observant.
+      Use dry situational humour and familiar everyday behaviour; the humour must come
+      from recognition, not ridicule. Use the supplied real news as the premise and make
+      the yes/no framing amusing, but never invent facts.
+      Do not insult users or groups, and never use ethnic, religious, gender, disability,
+      illness, trauma, poverty, military-loss, terror-victim, hostage or bereavement
+      stereotypes. Prefer everyday habits, family chats, bureaucracy, housing, commuting,
+      work, apps and phones, shopping, neighbourhood life and mild self-deprecation.
+      The result should feel clever enough to share, but safe enough to publish publicly.
+    ru: >
+      Ты остроумен, краток и наблюдателен.
+      Используй сухой ситуативный юмор и узнаваемое повседневное поведение; смешно должно
+      быть от узнавания, а не от насмешки. Используй реальную новость как основу, сделай
+      формулировку да/нет забавной, но не выдумывай факты.
+      Не оскорбляй пользователей и группы и никогда не используй стереотипы по этнической
+      принадлежности, религии, полу, инвалидности, болезни, травме, бедности, гибели
+      военных, жертвам терактов, заложникам или утрате близких. Предпочитай бытовые
+      привычки, семейные чаты, бюрократию, жильё, дорогу на работу, работу, приложения и
+      телефоны, покупки, жизнь района и мягкую самоиронию.
+      Результат должен быть достаточно остроумным, чтобы им поделились, и достаточно
+      безопасным, чтобы опубликовать его публично.

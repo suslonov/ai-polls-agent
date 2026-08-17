@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Collected stories — {{ state.day }}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f5f6fa; --surface: #ffffff; --border: #e2e5ef; --text: #1a1d2e;
+      --muted: #6b7280; --accent: #4f46e5; --accent-soft: #eef2ff; --accent-text: #4338ca;
+      --green: #16a34a; --green-soft: #f0fdf4; --amber: #b45309; --amber-soft: #fffbeb;
+      --red: #dc2626; --red-soft: #fef2f2; --tag-bg: #f1f5f9; --tag-text: #475569;
+      --radius: 10px; --shadow: 0 1px 4px rgba(0,0,0,.07), 0 4px 12px rgba(0,0,0,.05);
+    }
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+           background: var(--bg); color: var(--text); line-height: 1.5; }
+    .wrapper { max-width: 1400px; margin: 0 auto; padding: 0 1.5rem 4rem; }
+    header { background: var(--surface); border-bottom: 1px solid var(--border);
+             padding: .9rem 1.5rem; margin-bottom: 1.25rem; display: flex; align-items: center;
+             gap: 1rem; flex-wrap: wrap; position: sticky; top: 0; z-index: 10;
+             box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+    .site-title { font-size: 1.25rem; font-weight: 700; letter-spacing: -.02em; }
+    .site-title span { color: var(--accent); }
+    .meta { font-size: .78rem; color: var(--muted); }
+    .spacer { flex: 1; }
+    a { color: var(--accent-text); }
+
+    button { font: inherit; cursor: pointer; border: 1px solid var(--border);
+             background: var(--surface); color: var(--text); border-radius: 8px;
+             padding: .25rem .6rem; font-size: .8rem; white-space: nowrap; }
+    button:hover:not(:disabled) { border-color: var(--accent); }
+    button:disabled { opacity: .4; cursor: not-allowed; }
+    button.added { background: var(--green-soft); border-color: #bbf7d0; color: var(--green); }
+
+    table { width: 100%; border-collapse: collapse; font-size: .85rem; background: var(--surface);
+            border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
+            box-shadow: var(--shadow); }
+    th, td { text-align: left; padding: .45rem .7rem; border-bottom: 1px solid var(--border);
+             vertical-align: top; }
+    th { background: var(--bg); font-size: .7rem; text-transform: uppercase;
+         letter-spacing: .05em; color: var(--muted); position: sticky; top: 3.4rem; }
+    tr:last-child td { border-bottom: none; }
+    tr.is-candidate { background: var(--accent-soft); }
+    tr.dropped td.title { color: var(--muted); }
+    td.title { max-width: 720px; }
+    td.title .rtl { direction: rtl; text-align: right; }
+    td.title .en { font-size: .8rem; color: var(--muted); }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted);
+             font-size: .78rem; }
+    td.when { white-space: nowrap; color: var(--muted); font-size: .78rem; }
+
+    .badge { display: inline-block; font-size: .66rem; font-weight: 700; letter-spacing: .04em;
+             text-transform: uppercase; padding: .05rem .4rem; border-radius: 5px;
+             background: var(--tag-bg); color: var(--tag-text); }
+    .badge.he { background: #ede9fe; color: #6d28d9; }
+    .badge.ru { background: #dbeafe; color: #1d4ed8; }
+    .badge.en { background: #dcfce7; color: #15803d; }
+
+    .pager { display: flex; gap: .5rem; align-items: center; margin: 1rem 0; }
+    .banner { border-radius: var(--radius); padding: .7rem 1rem; margin-bottom: 1rem;
+              font-size: .85rem; background: var(--accent-soft); border: 1px solid #c7d2fe;
+              color: var(--accent-text); }
+    #flash { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); z-index: 60;
+             background: var(--red-soft); border: 1px solid #fecaca; color: var(--red);
+             padding: .7rem 1rem; border-radius: var(--radius); display: none; max-width: 640px; }
+    #flash.on { display: block; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="site-title">Collected <span>stories</span></div>
+    <div class="meta">
+      {{ state.day }} · run {{ state.run_id or '—' }} · {{ state.total }} collected ·
+      {{ state.candidate_count }} on the shortlist
+    </div>
+    <div class="spacer"></div>
+    <a class="meta" href="{{ api_base }}/">← back to today's poll</a>
+    <button onclick="location.reload()">Refresh</button>
+  </header>
+
+  <div class="wrapper">
+    {% if state.selection_locked %}
+    <div class="banner">
+      Today's selection is locked, so adding a story to the shortlist no longer changes
+      what gets generated. The table stays available for reference.
+    </div>
+    {% else %}
+    <div class="banner">
+      Everything the last run collected, before the model narrowed it down.
+      <strong>Add to shortlist</strong> puts a story on the main page, where you can assign it
+      to the Russian or English slot.
+    </div>
+    {% endif %}
+
+    <table>
+      <thead>
+        <tr>
+          <th>When</th>
+          <th>Source</th>
+          <th>Title</th>
+          <th>Topic</th>
+          <th class="num">int</th>
+          <th class="num">fun</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in state.rows %}
+        <tr id="row-{{ item.id }}"
+            class="{{ 'is-candidate' if item.is_candidate }} {{ 'dropped' if not item.prefilter_keep }}">
+          <td class="when">{{ item.published_at }}</td>
+          <td><span class="badge {{ item.source_language }}">{{ item.source_language }}</span>
+              <span class="meta">{{ item.source_name }}</span></td>
+          <td class="title">
+            <a class="{{ 'rtl' if item.source_language == 'he' }}"
+               href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title }}</a>
+            {% if item.title_en %}<div class="en">{{ item.title_en }}</div>{% endif %}
+          </td>
+          <td class="meta">{{ item.topic }}</td>
+          <td class="num">{{ item.prefilter_interesting | round | int if item.prefilter_interesting is not none else '' }}</td>
+          <td class="num">{{ item.prefilter_funny | round | int if item.prefilter_funny is not none else '' }}</td>
+          <td>
+            {% if item.is_selected %}
+            <button class="added" disabled>selected</button>
+            {% elif item.is_candidate %}
+            <button class="added" disabled>on shortlist</button>
+            {% else %}
+            <button id="btn-{{ item.id }}" {{ 'disabled' if state.selection_locked }}
+                    onclick="addCandidate({{ item.id }})">Add to shortlist</button>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="pager">
+      {% if state.has_prev %}
+      <a href="{{ api_base }}/collected/p/{{ state.page - 1 }}">← previous</a>
+      {% endif %}
+      <span class="meta">page {{ state.page }} of {{ state.total_pages }}</span>
+      {% if state.has_next %}
+      <a href="{{ api_base }}/collected/p/{{ state.page + 1 }}">next →</a>
+      {% endif %}
+    </div>
+
+    <p class="meta">Rendered {{ generated_at }}. Rows the prefilter dropped are greyed;
+      scores are the cheap prefilter's, 0–100.</p>
+  </div>
+
+  <div id="flash"></div>
+
+  <script>
+    const API_BASE = {{ api_base | tojson }};
+
+    function flash(message) {
+      const el = document.getElementById("flash");
+      el.textContent = message;
+      el.classList.add("on");
+      setTimeout(() => el.classList.remove("on"), 8000);
+    }
+
+    async function addCandidate(itemId) {
+      const button = document.getElementById("btn-" + itemId);
+      if (button) { button.disabled = true; button.textContent = "adding…"; }
+      try {
+        const response = await fetch(API_BASE + "/api/add-candidate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ item_id: itemId })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok === false) {
+          flash(data.error || ("HTTP " + response.status));
+          if (button) { button.disabled = false; button.textContent = "Add to shortlist"; }
+          return;
+        }
+        if (button) { button.textContent = "on shortlist"; button.classList.add("added"); }
+        document.getElementById("row-" + itemId)?.classList.add("is-candidate");
+      } catch (err) {
+        flash(String(err));
+        if (button) { button.disabled = false; button.textContent = "Add to shortlist"; }
+      }
+    }
+  </script>
+</body>
+</html>

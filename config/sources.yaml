@@ -1,0 +1,258 @@
+# News sources for the daily Israeli poll pipeline.
+#
+# Every feed URL below was probed live before being committed. If a source
+# stops working, one failed source must never abort the run — the pipeline
+# records it in `source_fetches` and continues.
+#
+# Fields:
+#   id            stable identifier, used as the DB source_id
+#   enabled       skip the source entirely when false
+#   language      he | ru | en   (source language, not target language)
+#   type          rss | site_index | telegram_public
+#   name          human-readable name shown in the operator UI
+#   urls          feed URLs (rss), listing pages (site_index), channels (telegram_public)
+#   priority      1 = primary publisher, 2 = secondary, 3 = discovery only
+#   authoritative true for original publishers, false for aggregators/relays
+#   tags          free-form labels
+#   link_pattern  site_index only: substring/regex an article href must match
+#   min_title_len site_index only: shortest anchor text treated as a headline
+
+sources:
+  # ── Hebrew ────────────────────────────────────────────────────────────────
+  - id: ynet_he
+    enabled: true
+    language: he
+    type: rss
+    name: Ynet
+    urls:
+      - https://www.ynet.co.il/Integration/StoryRss2.xml
+      - https://www.ynet.co.il/Integration/StoryRss1854.xml
+    priority: 1
+    authoritative: true
+    tags: [general]
+
+  - id: n12_he
+    enabled: true
+    language: he
+    type: rss
+    name: N12 / Mako
+    urls:
+      - https://rcs.mako.co.il/rss/news-israel.xml
+      - https://rcs.mako.co.il/rss/news-law.xml
+      - https://rcs.mako.co.il/rss/news-military.xml
+    priority: 1
+    authoritative: true
+    tags: [general]
+
+  - id: walla_he
+    enabled: true
+    language: he
+    type: rss
+    name: Walla News
+    urls:
+      - https://rss.walla.co.il/feed/1
+      - https://rss.walla.co.il/feed/22
+    priority: 1
+    authoritative: true
+    tags: [general]
+
+  - id: maariv_he
+    enabled: true
+    language: he
+    type: rss
+    name: Maariv
+    urls:
+      - https://www.maariv.co.il/Rss/RssChadashot
+      - https://www.maariv.co.il/Rss/RssFeedsMivzakiChadashot
+    priority: 2
+    authoritative: true
+    tags: [general]
+
+  - id: israelhayom_he
+    enabled: true
+    language: he
+    type: rss
+    name: Israel Hayom
+    urls:
+      - https://www.israelhayom.co.il/rss.xml
+    priority: 2
+    authoritative: true
+    tags: [general]
+
+  - id: haaretz_he
+    enabled: true
+    language: he
+    type: rss
+    name: Haaretz (HE)
+    urls:
+      - https://www.haaretz.co.il/srv/rss---feedly
+    priority: 2
+    authoritative: true
+    tags: [general, paywalled]
+
+  - id: kan_he
+    # No stable public feed or scrapable index was found (the site is a JS app
+    # and /api/newsflash/v2/Newsflash returns an empty utf-16 document).
+    # Left configured but disabled so it can be turned on once a feed exists.
+    enabled: false
+    language: he
+    type: site_index
+    name: Kan News
+    urls:
+      - https://www.kan.org.il/
+    link_pattern: "/content/kan/news/"
+    priority: 3
+    authoritative: true
+    tags: [general]
+
+  # ── Russian ───────────────────────────────────────────────────────────────
+  - id: newsru_ru
+    enabled: true
+    language: ru
+    type: rss
+    name: NEWSru.co.il
+    urls:
+      - https://www.newsru.co.il/il/www/news/all
+    priority: 1
+    authoritative: true
+    tags: [general]
+
+  - id: vesty_ru
+    enabled: true
+    language: ru
+    type: site_index
+    name: Vesty
+    urls:
+      - https://www.vesty.co.il/
+    link_pattern: "/main/article/"
+    min_title_len: 25
+    priority: 1
+    authoritative: true
+    tags: [general]
+
+  - id: 9tv_ru
+    enabled: true
+    language: ru
+    type: rss
+    name: 9 Channel
+    urls:
+      - https://www.9tv.co.il/rss/mainfeed
+    priority: 1
+    authoritative: true
+    tags: [general]
+
+  - id: israelinfo_ru
+    enabled: true
+    language: ru
+    type: site_index
+    name: IsraelInfo
+    urls:
+      - https://news.israelinfo.co.il/
+    # Article URLs are a bare numeric id: https://news.israelinfo.co.il/146966
+    link_pattern: "news\\.israelinfo\\.co\\.il/\\d{5,}"
+    min_title_len: 25
+    priority: 2
+    authoritative: true
+    tags: [general]
+
+  - id: cursor_ru
+    enabled: true
+    language: ru
+    type: rss
+    name: Cursor
+    urls:
+      - https://cursorinfo.co.il/feed/
+    priority: 3
+    authoritative: false
+    tags: [general, discovery]
+
+  # ── English ───────────────────────────────────────────────────────────────
+  - id: toi_en
+    enabled: true
+    language: en
+    type: rss
+    name: The Times of Israel
+    urls:
+      - https://www.timesofisrael.com/feed/
+    priority: 1
+    authoritative: true
+    tags: [general]
+
+  - id: jpost_en
+    enabled: true
+    language: en
+    type: rss
+    name: The Jerusalem Post
+    urls:
+      - https://www.jpost.com/rss/rssfeedsheadlines.aspx
+      - https://www.jpost.com/rss/rssfeedsisraelnews.aspx
+    priority: 1
+    authoritative: true
+    tags: [general]
+
+  - id: ynetnews_en
+    enabled: true
+    language: en
+    type: rss
+    name: Ynetnews
+    urls:
+      - https://www.ynetnews.com/Integration/StoryRss3082.xml
+    priority: 1
+    authoritative: true
+    tags: [general]
+
+  - id: i24_en
+    enabled: true
+    language: en
+    type: rss
+    name: i24NEWS English
+    urls:
+      - https://feeds.feedburner.com/i24news-en
+    priority: 2
+    authoritative: true
+    tags: [general]
+
+  - id: haaretz_en
+    enabled: true
+    language: en
+    type: rss
+    name: Haaretz (EN)
+    urls:
+      - https://www.haaretz.com/cmlink/1.4605102
+    priority: 2
+    authoritative: true
+    tags: [general, paywalled]
+
+  # ── Telegram (discovery layer only) ───────────────────────────────────────
+  - id: tg_ynetalerts
+    enabled: true
+    language: he
+    type: telegram_public
+    name: Ynet Alerts (Telegram)
+    urls:
+      - https://t.me/s/ynetalerts
+    priority: 3
+    authoritative: false
+    tags: [telegram, discovery]
+
+  - id: tg_newsru
+    enabled: true
+    language: ru
+    type: telegram_public
+    name: NEWSru Israel (Telegram)
+    urls:
+      - https://t.me/s/NEWSruIsrael
+    priority: 3
+    authoritative: false
+    tags: [telegram, discovery]
+
+  - id: tg_israelhayom
+    enabled: true
+    language: he
+    type: telegram_public
+    name: Israel Hayom (Telegram)
+    urls:
+      - https://t.me/s/israelhayomofficial
+    priority: 3
+    authoritative: false
+    tags: [telegram, discovery]

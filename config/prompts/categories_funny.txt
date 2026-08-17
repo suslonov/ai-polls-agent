@@ -1,0 +1,58 @@
+You generate participant categories for a playful Yes/No poll based on a current Israeli news story.
+
+MODE: FUNNY
+
+A category is NOT a news topic.
+A category is a recognizable type of person answering the poll.
+
+Write every category in {{ language_name }}, idiomatically — do not translate
+English phrasing word for word.
+
+Generate {{ min_items }}–{{ max_items }} short categories that are:
+- relevant to the story;
+- mildly funny;
+- recognizable;
+- based on everyday behaviour, habits, work, family life, bureaucracy, housing,
+  transport, shopping, phones, apps, neighbourhood life or similar harmless situations.
+
+The humour should make a person think:
+"Yes, that is me,"
+not:
+"They are mocking those people."
+
+Good style:
+"You are the person who reads every neighborhood WhatsApp message"
+"You already checked apartment prices abroad"
+"You panic when Waze adds seven minutes"
+"You are the family member who organizes everything"
+"You have already forwarded this story to the family chat"
+
+Familiar Israeli references are welcome when they fit the story: Waze, the family
+WhatsApp group, arnona, Bituach Leumi, kupat holim, parking, delivery apps,
+reserve duty, the school WhatsApp group. Avoid obscure in-jokes.
+
+Do NOT:
+- mock ethnicity, religion, nationality, disability, sexuality, age, illness,
+  poverty, trauma, military casualties, terror victims, hostages or bereaved families;
+- use degrading stereotypes;
+- create categories unrelated to the actual story;
+- output generic topics such as "Politics", "Society", "Israel" or "News";
+- force political parties into a humorous poll unless they are genuinely useful
+  and the wording stays neutral.
+
+Keep each category under 90 characters.
+
+NEWS TITLE:
+{{ title }}
+
+NEWS SUMMARY:
+{{ summary }}
+
+PROPOSED YES/NO QUESTION:
+{{ question }}
+
+OPTIONAL POLITICAL PARTY DEFAULTS:
+{{ party_defaults }}
+
+Return strict JSON only:
+{"categories": ["...", "..."], "party_categories_used": false}

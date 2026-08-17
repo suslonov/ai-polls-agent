@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Daily Polls — {{ state.day }}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f5f6fa;
+      --surface: #ffffff;
+      --border: #e2e5ef;
+      --text: #1a1d2e;
+      --muted: #6b7280;
+      --accent: #4f46e5;
+      --accent-soft: #eef2ff;
+      --accent-text: #4338ca;
+      --green: #16a34a;
+      --green-soft: #f0fdf4;
+      --amber: #b45309;
+      --amber-soft: #fffbeb;
+      --red: #dc2626;
+      --red-soft: #fef2f2;
+      --tag-bg: #f1f5f9;
+      --tag-text: #475569;
+      --radius: 10px;
+      --shadow: 0 1px 4px rgba(0,0,0,.07), 0 4px 12px rgba(0,0,0,.05);
+    }
+
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--bg); color: var(--text); line-height: 1.55; min-height: 100vh;
+    }
+    .wrapper { max-width: 1200px; margin: 0 auto; padding: 0 1.5rem 4rem; }
+
+    header {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 0.9rem 1.5rem; margin-bottom: 1.5rem; display: flex; align-items: center;
+      gap: 1rem; flex-wrap: wrap; position: sticky; top: 0; z-index: 10;
+      box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    }
+    .site-title { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.02em; }
+    .site-title span { color: var(--accent); }
+    .meta { font-size: 0.78rem; color: var(--muted); }
+    .spacer { flex: 1; }
+
+    button {
+      font: inherit; cursor: pointer; border: 1px solid var(--border);
+      background: var(--surface); color: var(--text);
+      border-radius: 8px; padding: 0.35rem 0.8rem; transition: border-color .15s, background .15s;
+    }
+    button:hover:not(:disabled) { border-color: var(--accent); }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+    button.primary:hover:not(:disabled) { background: var(--accent-text); }
+    button.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+    button.small { padding: 0.2rem 0.55rem; font-size: 0.78rem; }
+
+    h2 { font-size: 1rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 2rem 0 0.75rem; }
+    a { color: var(--accent-text); }
+
+    .banner { border-radius: var(--radius); padding: 0.7rem 1rem; margin-bottom: 1rem; font-size: 0.85rem; }
+    .banner.error { background: var(--red-soft); border: 1px solid #fecaca; color: var(--red); }
+    .banner.warn  { background: var(--amber-soft); border: 1px solid #fde68a; color: var(--amber); }
+    .banner.info  { background: var(--accent-soft); border: 1px solid #c7d2fe; color: var(--accent-text); }
+
+    .slots { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1rem; }
+    .panel {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 1rem; box-shadow: var(--shadow);
+    }
+    .panel h3 { font-size: 0.9rem; margin-bottom: .5rem; display: flex; align-items: center; gap: .5rem; }
+    .slot-empty { color: var(--muted); font-size: .85rem; font-style: italic; }
+    .slot-title { font-weight: 600; margin-bottom: .35rem; }
+    .row { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; margin-top: .6rem; }
+    .checkline { display: flex; gap: .4rem; align-items: center; margin-top: .5rem;
+                 font-size: 0.78rem; color: var(--muted); cursor: pointer; }
+    .checkline input { cursor: pointer; }
+
+    .badge {
+      display: inline-block; font-size: .68rem; font-weight: 700; letter-spacing: .04em;
+      text-transform: uppercase; padding: .1rem .45rem; border-radius: 5px;
+      background: var(--tag-bg); color: var(--tag-text);
+    }
+    .badge.he { background: #ede9fe; color: #6d28d9; }
+    .badge.ru { background: #dbeafe; color: #1d4ed8; }
+    .badge.en { background: #dcfce7; color: #15803d; }
+    .badge.tone { background: var(--accent-soft); color: var(--accent-text); }
+    .badge.status-editing { background: var(--amber-soft); color: var(--amber); }
+    .badge.status-published { background: var(--green-soft); color: var(--green); }
+    .badge.status-error { background: var(--red-soft); color: var(--red); }
+
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 1rem; }
+    .card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: .9rem; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: .45rem;
+    }
+    .card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft), var(--shadow); }
+    .card-head { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; font-size: .75rem; color: var(--muted); }
+    .card-title { font-weight: 600; font-size: .98rem; line-height: 1.35; }
+    .card-title.rtl { direction: rtl; text-align: right; }
+    .card-title-en { font-size: .88rem; color: var(--muted); }
+    .card-summary { font-size: .85rem; color: #374151; }
+    .scores { font-size: .75rem; color: var(--muted); display: flex; gap: .8rem; }
+    .card-actions { display: flex; gap: .4rem; margin-top: auto; padding-top: .5rem; flex-wrap: wrap; }
+
+    table { width: 100%; border-collapse: collapse; font-size: .82rem; background: var(--surface);
+            border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    th, td { text-align: left; padding: .5rem .7rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { background: var(--bg); font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+    tr:last-child td { border-bottom: none; }
+
+    ul.pictures { margin: .4rem 0 .2rem 1.1rem; font-size: .83rem; color: #374151; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .78rem; }
+
+    #busy {
+      position: fixed; inset: 0; background: rgba(15,23,42,.45); color: #fff; display: none;
+      align-items: center; justify-content: center; z-index: 50; font-size: 1rem;
+    }
+    #busy.on { display: flex; }
+    #flash { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); z-index: 60;
+             max-width: 640px; display: none; }
+    #flash.on { display: block; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="site-title">Daily <span>Polls</span></div>
+    <div class="meta">
+      {{ state.day }} · run {{ state.run.status }}
+      {% if state.run.finished_at %}· collected {{ state.run.finished_at }}{% endif %}
+      · {{ state.run.collected_count }} collected → {{ state.candidates | length }} candidates
+    </div>
+    <div class="spacer"></div>
+    <a class="meta" href="{{ api_base }}/collected">All collected ({{ state.run.collected_count }}) →</a>
+    <button class="small" onclick="location.reload()">Refresh</button>
+  </header>
+
+  <div class="wrapper">
+    {% if state.run.error %}
+    <div class="banner error"><strong>Last run failed:</strong> {{ state.run.error }}</div>
+    {% endif %}
+    {% if state.workflow.selection_locked %}
+    <div class="banner info">
+      Selection locked at {{ state.workflow.selection_locked_at }} — the day's stories can no longer be changed.
+      Workflow status: <strong>{{ state.workflow.status }}</strong>.
+    </div>
+    {% endif %}
+    {% if not state.candidates %}
+    <div class="banner warn">No candidates for today yet. Run the collection pipeline
+      (<span class="mono">bash scripts/run.sh</span>) or wait for the cron job.</div>
+    {% endif %}
+
+    <!-- ── Slots ──────────────────────────────────────────────────────── -->
+    <h2>Today's selection</h2>
+    <div class="slots">
+      {% for slot in ['ru', 'en'] %}
+      {% set slot_state = state.workflow.slots[slot] %}
+      {% set item_id = slot_state.item_id %}
+      {% set tone = slot_state.tone %}
+      {% set slot_locked = slot_state.locked %}
+      <div class="panel">
+        <h3><span class="badge {{ slot }}">{{ slot }}</span>
+          {{ 'Russian quiz' if slot == 'ru' else 'English quiz' }}
+          {% if slot_locked %}<span class="badge status-editing">locked</span>{% endif %}</h3>
+        {% if item_id %}
+          {% for candidate in state.candidates if candidate.id == item_id %}
+          <div class="slot-title">{{ candidate.title_en or candidate.title_original }}</div>
+          <div class="meta">{{ candidate.source_name }} · {{ candidate.published_at }}</div>
+          {% endfor %}
+          {% if item_id and not state.candidates | selectattr('id', 'equalto', item_id) | list %}
+          <div class="meta">Story #{{ item_id }} (not in today's shortlist)</div>
+          {% endif %}
+        {% else %}
+          <div class="slot-empty">No story selected — this language will be skipped.</div>
+        {% endif %}
+        <div class="row">
+          {% for option in ['important', 'funny'] %}
+          <button class="small {{ 'active' if tone == option }}"
+                  {{ 'disabled' if slot_locked or not item_id }}
+                  onclick="select('{{ slot }}', {{ item_id or 'null' }}, '{{ option }}')">{{ option }}</button>
+          {% endfor %}
+          <button class="small" {{ 'disabled' if slot_locked or not item_id }}
+                  onclick="select('{{ slot }}', null, null)">clear</button>
+        </div>
+        {% if item_id and not tone %}
+        <div class="meta" style="color: var(--amber); margin-top:.4rem;">Choose a tone before starting.</div>
+        {% endif %}
+
+        <label class="checkline" title="Fill the CATEGORIES marker with the prompt
+template's own DEFAULT list instead of designing participants for this story">
+          <input type="checkbox" {{ 'checked' if slot_state.default_categories }}
+                 {{ 'disabled' if slot_locked }}
+                 onchange="setDefaultCategories('{{ slot }}', this.checked)">
+          use default categories, don't invent
+        </label>
+
+        <div class="row" style="margin-top:.6rem;">
+          <button class="primary small" {{ '' if slot_state.can_start else 'disabled' }}
+                  onclick="startGeneration('{{ slot }}')">
+            Start {{ slot | upper }} chat</button>
+          {% if slot_locked %}
+          <button class="small" onclick="resetGeneration('{{ slot }}')"
+                  title="Discard this language's generation and unlock its selection">Reset</button>
+          {% endif %}
+        </div>
+        <div class="meta" style="margin-top:.3rem;">
+          {% if slot_locked %}
+            Locked {{ slot_state.locked_at }} — this language is running on its own.
+          {% else %}
+            Locks only the {{ slot | upper }} slot; the other language stays editable.
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- ── Generated chats ────────────────────────────────────────────── -->
+    {% if state.echoes %}
+    <h2>Generated chats</h2>
+    <div class="slots">
+      {% for echo in state.echoes %}
+      <div class="panel">
+        <h3>
+          <span class="badge {{ echo.language }}">{{ echo.language }}</span>
+          {% if echo.tone %}<span class="badge tone">{{ echo.tone }}</span>{% endif %}
+          <span class="badge status-{{ echo.status }}">{{ echo.status }}</span>
+        </h3>
+        <div class="slot-title">{{ echo.title or '(no title yet)' }}</div>
+        {% if echo.yes_no_question %}
+        <div class="card-summary">{{ echo.yes_no_question }}</div>
+        {% endif %}
+        {% for candidate in state.candidates if candidate.id == echo.news_item_id %}
+        <div class="meta">from: {{ candidate.source_name }} —
+          <a href="{{ candidate.url }}" target="_blank" rel="noopener">{{ candidate.title_original }}</a></div>
+        {% endfor %}
+
+        {% if echo.editor_url %}
+        <div class="row">
+          <a href="{{ echo.editor_url }}" target="_blank" rel="noopener">Open echo editor →</a>
+          <span class="meta mono">id {{ echo.echo_id }}</span>
+        </div>
+        {% endif %}
+
+        {% if echo.prompt_location %}
+        <div class="meta mono" style="margin-top:.4rem; word-break: break-all;">
+          prompt: {{ echo.prompt_location }}
+          {% if echo.prompt_sha256 %}<br>sha256: {{ echo.prompt_sha256[:16] }}…{% endif %}
+          {% if echo.template_echo_id %}<br>from template echo {{ echo.template_echo_id }}{% endif %}
+        </div>
+        {% endif %}
+
+        {% if echo.categories %}
+        <div class="meta" style="margin-top:.4rem;">
+          Categories ({{ echo.categories | length }})
+          {% if echo.categories_default_used %}<span class="badge">template defaults</span>{% endif %}
+          {% if echo.category_party_used %}<span class="badge">parties</span>{% endif %}
+          {% if echo.category_fallback_used %}<span class="badge status-editing">fallback</span>{% endif %}
+        </div>
+        <ul class="pictures">
+          {% for category in echo.categories %}<li>{{ category }}</li>{% endfor %}
+        </ul>
+        {% endif %}
+
+        {% if echo.picture_suggestions %}
+        <div class="meta" style="margin-top:.4rem;">Title-picture suggestions</div>
+        <ul class="pictures">
+          {% for suggestion in echo.picture_suggestions %}<li>{{ suggestion }}</li>{% endfor %}
+        </ul>
+        {% endif %}
+
+        {% if echo.error %}
+        <div class="banner error" style="margin:.5rem 0 0;">{{ echo.error }}</div>
+        {% endif %}
+
+        {% if echo.publish and echo.publish.stable_public_url %}
+        <div class="meta" style="margin-top:.4rem;">
+          Published {{ echo.publish.page_published_at }} →
+          <a href="{{ echo.publish.stable_public_url }}" target="_blank" rel="noopener">{{ echo.publish.stable_public_url }}</a>
+          {% if echo.publish.telegram_sent_at %}· Telegram sent {{ echo.publish.telegram_sent_at }}
+          {% else %}· Telegram not sent{% endif %}
+        </div>
+        {% endif %}
+        {% if echo.scroll_public_url %}
+        <div class="meta"><a href="{{ echo.scroll_public_url }}" target="_blank" rel="noopener">Public quiz →</a></div>
+        {% endif %}
+
+        <div class="card-actions">
+          <button class="primary small" onclick="finalize('{{ echo.language }}')"
+                  {{ 'disabled' if not echo.echo_id }}>Finalize</button>
+          <button class="small" onclick="retry('{{ echo.language }}')">Retry language</button>
+          {% if echo.status == 'published' %}
+          <button class="small" onclick="closeLanguage('{{ echo.language }}')"
+                  title="Retire this poll and free the {{ echo.language | upper }} slot for another one today">
+            Close</button>
+          {% endif %}
+          {% if echo.publish and echo.publish.page_published_at and not echo.publish.telegram_sent_at %}
+          <button class="small" onclick="post('/api/retry-telegram', {language: '{{ echo.language }}'})">
+            Retry Telegram</button>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- ── Candidates ─────────────────────────────────────────────────── -->
+    <h2>Candidates ({{ state.candidates | length }})</h2>
+    <div class="cards">
+      {% for candidate in state.candidates %}
+      {% set is_ru = state.workflow.ru_item_id == candidate.id %}
+      {% set is_en = state.workflow.en_item_id == candidate.id %}
+      <div class="card {{ 'selected' if is_ru or is_en }}">
+        <div class="card-head">
+          <span class="badge {{ candidate.source_language }}">{{ candidate.source_language }}</span>
+          <span>{{ candidate.source_name }}</span>
+          {% if candidate.published_at %}<span>· {{ candidate.published_at }}</span>{% endif %}
+          {% if candidate.topic %}<span class="badge">{{ candidate.topic }}</span>{% endif %}
+        </div>
+        <div class="card-title {{ 'rtl' if candidate.source_language == 'he' }}">{{ candidate.title_original }}</div>
+        {% if candidate.title_en %}
+        <div class="card-title-en">{{ candidate.title_en }}</div>
+        {% endif %}
+        {% if candidate.summary %}
+        <div class="card-summary">{{ candidate.summary }}</div>
+        {% endif %}
+        {% if candidate.why_candidate %}
+        <div class="meta">“{{ candidate.why_candidate }}”</div>
+        {% endif %}
+        <div class="scores">
+          <span>interesting {{ candidate.interesting_score | round | int if candidate.interesting_score is not none else '–' }}</span>
+          <span>funny {{ candidate.funny_score | round | int if candidate.funny_score is not none else '–' }}</span>
+          <a href="{{ candidate.url }}" target="_blank" rel="noopener">original →</a>
+          {% if candidate.discovery_url %}
+          <a href="{{ candidate.discovery_url }}" target="_blank" rel="noopener">telegram →</a>
+          {% endif %}
+        </div>
+        {% if candidate.translation_missing %}
+        <div class="meta" style="color: var(--amber);">
+          No English translation yet — usable for the RU slot, not for the EN slot.
+        </div>
+        {% endif %}
+        <div class="card-actions">
+          <button class="small {{ 'active' if is_ru }}"
+                  {{ 'disabled' if state.workflow.selection_locked or not candidate.eligible_ru }}
+                  onclick="select('ru', {{ candidate.id }}, currentTone('ru'))">→ RU slot</button>
+          <button class="small {{ 'active' if is_en }}"
+                  {{ 'disabled' if state.workflow.selection_locked or not candidate.eligible_en }}
+                  onclick="select('en', {{ candidate.id }}, currentTone('en'))">→ EN slot</button>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- ── History ────────────────────────────────────────────────────── -->
+    {% if history %}
+    <h2>History (read-only)</h2>
+    <table>
+      <thead>
+        <tr><th>Date</th><th>Lang</th><th>Tone</th><th>News</th><th>Echo</th><th>Published</th><th>Telegram</th></tr>
+      </thead>
+      <tbody>
+        {% for day in history %}
+        {% for entry in day.languages %}
+        <tr>
+          <td>{{ day.day if loop.first else '' }}</td>
+          <td><span class="badge {{ entry.language }}">{{ entry.language }}</span></td>
+          <td>{{ entry.tone }}</td>
+          <td>
+            {% if entry.news_url %}<a href="{{ entry.news_url }}" target="_blank" rel="noopener">{{ entry.news_title }}</a>
+            {% else %}{{ entry.news_title }}{% endif %}
+            <div class="meta">{{ entry.source_name }}</div>
+          </td>
+          <td>
+            {% if entry.editor_url %}<a href="{{ entry.editor_url }}" target="_blank" rel="noopener">{{ entry.echo_title or 'editor' }}</a>
+            {% else %}{{ entry.echo_title }}{% endif %}
+          </td>
+          <td>
+            {% if entry.stable_public_url %}
+            <a href="{{ entry.stable_public_url }}" target="_blank" rel="noopener">{{ entry.publish_status }}</a>
+            {% else %}{{ entry.publish_status }}{% endif %}
+          </td>
+          <td>{{ entry.telegram_sent_at or '—' }}</td>
+        </tr>
+        {% endfor %}
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    <p class="meta" style="margin-top:2rem;">Rendered {{ generated_at }} ({{ state.timezone }}).</p>
+  </div>
+
+  <div id="busy"><div>Working… this can take a minute.</div></div>
+  <div id="flash" class="banner error"></div>
+
+  <script>
+    // Values injected into JS must go through |tojson. Plain interpolation is
+    // HTML-escaped by autoescape, turning quotes into character references —
+    // a syntax error that kills this whole script block and every onclick with it.
+    const API_BASE = {{ api_base | tojson }};
+    const SELECTED_TONES = {
+      ru: {{ state.workflow.ru_tone | tojson }},
+      en: {{ state.workflow.en_tone | tojson }}
+    };
+
+    function currentTone(slot) { return SELECTED_TONES[slot] || "important"; }
+
+    function busy(on) { document.getElementById("busy").classList.toggle("on", on); }
+
+    function flash(message) {
+      const el = document.getElementById("flash");
+      el.textContent = message;
+      el.classList.add("on");
+      setTimeout(() => el.classList.remove("on"), 12000);
+    }
+
+    // Every action reloads so the page reflects the new DB state (the Generated
+    // chats block in particular). Messages are handed to the reloaded page
+    // through sessionStorage instead of being shown on a page about to vanish.
+    function reloadWith(message) {
+      if (message) sessionStorage.setItem("pollsFlash", message);
+      location.reload();
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      const pending = sessionStorage.getItem("pollsFlash");
+      if (pending) { sessionStorage.removeItem("pollsFlash"); flash(pending); }
+    });
+
+    async function post(path, payload) {
+      busy(true);
+      try {
+        const response = await fetch(API_BASE + path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload || {})
+        });
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok || data.ok === false) {
+          reloadWith((data && (data.error || JSON.stringify(data))) || ("HTTP " + response.status));
+          return null;
+        }
+        if (data.errors && data.errors.length) {
+          reloadWith(data.errors.map(e => e.language + ": " + e.error).join(" · "));
+          return data;
+        }
+        reloadWith(null);
+        return data;
+      } catch (err) {
+        // Network/parse failure: still reload so the page shows real state.
+        reloadWith(String(err));
+        return null;
+      } finally {
+        busy(false);
+      }
+    }
+
+    function select(slot, itemId, tone) {
+      return post("/api/select", { slot: slot, item_id: itemId, tone: itemId ? tone : null });
+    }
+
+    function setDefaultCategories(slot, enabled) {
+      return post("/api/default-categories", { slot: slot, enabled: enabled });
+    }
+
+    function startGeneration(language) {
+      // No confirmation here on purpose: a language can be reset if it goes wrong.
+      return post("/api/start-generation", { language: language });
+    }
+
+    // Reset and Close are operator state changes on this machine's database —
+    // no confirmation, no banner. Only Finalize asks, because it is the one
+    // button that publishes outward (public page + Telegram).
+    function resetGeneration(language) {
+      return post("/api/reset-generation", { language: language });
+    }
+
+    function closeLanguage(language) {
+      return post("/api/close-language", { language: language });
+    }
+
+    function retry(language) {
+      return post("/api/retry-generation", { language: language });
+    }
+
+    function finalize(language) {
+      if (!confirm("Finalize " + language.toUpperCase() + "? This publishes the public page.")) return;
+      return post("/api/finalize", { language: language });
+    }
+  </script>
+</body>
+</html>
