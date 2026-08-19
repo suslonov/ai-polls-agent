@@ -57,9 +57,9 @@ class CollectionConfig(BaseModel):
     lookback_hours: int = 30
     max_items_per_source: int = 30
     max_candidates_before_prefilter: int = 250
-    prefilter_keep: int = 45
-    final_candidates_min: int = 10
-    final_candidates_max: int = 20
+    prefilter_keep: int = 90
+    final_candidates_min: int = 20
+    final_candidates_max: int = 40
     max_article_chars_for_selector: int = 800
     max_article_chars_for_enrichment: int = 9000
     max_article_chars_for_prompt: int = 6000
@@ -234,16 +234,18 @@ class NewsItem(BaseModel):
     def eligible_for(self, slot: str) -> bool:
         """Slot eligibility.
 
-        Hebrew stories feed both slots — the quiz is written in the target
-        language from the Hebrew source either way. The EN slot additionally
-        requires the English rendering, because the operator picks from it and
-        the English quiz is designed against it; the RU slot does not, since
-        the designer works from the Hebrew original.
+        Any source language can feed either slot — the quiz is written in the
+        target language from whatever the source says. The one precondition is
+        for Hebrew in the EN slot, where collection has already produced the
+        English rendering the operator picks from.
+
+        A Russian story in the EN slot has no precondition: it is translated on
+        demand when the operator presses Start, never during collection.
         """
         if slot == "ru":
             return self.source_language in ("ru", "he")
         if slot == "en":
-            if self.source_language == "en":
+            if self.source_language in ("en", "ru"):
                 return True
             if self.source_language == "he":
                 return bool(self.title_en and self.short_en)

@@ -309,13 +309,6 @@ def test_refuses_to_overwrite_the_template_prompt():
     assert "{{PERSONA}}" in client.s3_objects["500/text/9001.txt"]
 
 
-def test_prompt_hash_is_recorded():
-    client = FakeKvasirClient()
-    built = _create(client)
-    assert len(built.prompt_hash) == 64
-    assert built.prompt_hash == echo_builder.prompt_sha256(client.s3_objects[built.prompt_key])
-
-
 def test_assets_pointing_at_the_template_course_are_dropped_on_cross_course_clone():
     client = FakeKvasirClient()
     client.template["assets"]["questions"] = {"region": "us-east-1", "name": "9001", "ext": "txt"}

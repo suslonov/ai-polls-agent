@@ -11,6 +11,7 @@ Routes
     GET  /api/history          previous days (read-only)
     POST /api/select           set/clear one slot's selection (409 once locked)
     POST /api/default-categories  use the template's category list for one slot
+    POST /api/categories       edit one generated echo's categories (prompt included)
     POST /api/start-generation lock the selection, then create the echoes
     POST /api/retry-generation retry one language (optionally as a fresh echo)
     POST /api/finalize         publish one finished language
@@ -87,6 +88,8 @@ class PollsModule:
                 return self._api_select(body)
             if method == "POST" and route == "/api/default-categories":
                 return self._api_default_categories(body)
+            if method == "POST" and route == "/api/categories":
+                return self._api_edit_categories(body)
             if method == "POST" and route == "/api/start-generation":
                 return self._api_start_generation(body)
             if method == "POST" and route == "/api/retry-generation":
@@ -245,6 +248,30 @@ class PollsModule:
 
         return _json_response(200, {"ok": True, "workflow": workflow})
 
+    def _api_edit_categories(self, body: bytes) -> Response:
+        """Replace one echo's categories, in the database and in its prompt."""
+        from src import workflow as wf
+        from src.secrets import SecretsError, load_secrets
+
+        data = _parse_json(body)
+        language = str(data.get("language") or "").lower()
+        if language not in ("ru", "en"):
+            return _json_response(400, {"ok": False, "error": "language must be 'ru' or 'en'"})
+
+        raw = data.get("categories")
+        if not isinstance(raw, list):
+            return _json_response(400, {"ok": False, "error": "categories must be a list"})
+
+        try:
+            secrets = load_secrets(self.repo_path)
+            result = wf.update_categories(
+                self.settings, secrets, self.db_path, self._today(), language,
+                [str(value) for value in raw],
+            )
+        except (wf.WorkflowError, SecretsError) as exc:
+            return _json_response(400, {"ok": False, "error": str(exc)})
+        return _json_response(200, {"ok": True, **result})
+
     def _api_start_generation(self, body: bytes) -> Response:
         """Start one language (or every selected one when none is named)."""
         from src import db, workflow as wf
@@ -364,7 +391,8 @@ def _slot_eligibility(row: dict) -> dict[str, bool]:
     has_translation = bool(row.get("title_en") and row.get("short_en"))
     return {
         "ru": language in ("ru", "he"),
-        "en": language == "en" or (language == "he" and has_translation),
+        # Russian is translated on demand at Start, so it needs nothing here.
+        "en": language in ("en", "ru") or (language == "he" and has_translation),
     }
 
 

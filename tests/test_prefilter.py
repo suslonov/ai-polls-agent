@@ -221,3 +221,66 @@ def test_an_empty_topic_keeps_the_prefilter_label(tmp_path):
     db.update_selection(db_path, item_id, rank=1, interesting=70, funny=10, topic="", why="w")
 
     assert db.get_item(db_path, item_id)["topic"] == "bureaucracy"
+
+
+def test_a_russian_story_never_gets_an_english_why_candidate():
+    """The card shows `why_candidate` under the title — English there reads as a
+    translation of the Russian headline, which is exactly what must not happen."""
+    from src.selector import clean_why, parse_picks
+
+    english = "Only 12% of flights on time at Ben Gurion - a vivid consumer grievance."
+    assert clean_why(english, "ru") == ""
+    assert clean_why(english, "en") == english
+    assert clean_why(english, "he") == english, "Hebrew is translated by design"
+
+    russian = "Яркая бытовая жалоба, есть ясный вопрос да/нет."
+    assert clean_why(russian, "ru") == russian
+
+    picks = parse_picks(
+        {"selected": [{"id": 0, "rank": 1, "why_candidate": english},
+                      {"id": 1, "rank": 2, "why_candidate": english}]},
+        valid_ids={0, 1},
+        languages={0: "ru", 1: "en"},
+    )
+    assert [pick.why_candidate for pick in picks] == ["", english]
+
+
+def test_select_candidates_passes_each_story_language_to_the_guard(monkeypatch):
+    """The guard is useless unless the real call site knows each item's language."""
+    from src import selector
+
+    items = [
+        make_item(language="ru", url="https://newsru.co.il/a", title="Русская новость"),
+        make_item(language="en", url="https://timesofisrael.com/b", title="An English story"),
+    ]
+    english = "A clear yes/no about airport dysfunction."
+
+    monkeypatch.setattr(selector, "claude_json", lambda **kwargs: {
+        "selected": [{"id": 0, "rank": 1, "why_candidate": english, "topic": "transport"},
+                     {"id": 1, "rank": 2, "why_candidate": english, "topic": "transport"}]
+    })
+
+    picked = selector.select_candidates(
+        items, api_key="k", model="m", min_items=1, max_items=5, max_chars=500
+    )
+
+    by_language = {item.source_language: pick.why_candidate for item, pick in picked}
+    assert by_language["ru"] == "", "no English rendering of a Russian story"
+    assert by_language["en"] == english
+
+
+def test_operator_added_russian_stories_are_marked_in_russian(tmp_path):
+    from src import db
+
+    db_path = tmp_path / "state.db"
+    db.init_db(db_path)
+    russian = db.upsert_news_item(db_path, make_item(language="ru", url="https://newsru.co.il/a",
+                                                     title="Русская новость"))
+    english = db.upsert_news_item(db_path, make_item(language="en", url="https://toi.com/b",
+                                                     title="An English story"))
+
+    db.add_manual_candidate(db_path, russian)
+    db.add_manual_candidate(db_path, english)
+
+    assert db.get_item(db_path, russian)["why_candidate"] == "добавлено оператором"
+    assert db.get_item(db_path, english)["why_candidate"] == "added by the operator"

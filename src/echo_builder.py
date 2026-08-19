@@ -12,7 +12,6 @@ The template's own S3 object is never written to.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import re
@@ -202,11 +201,6 @@ def fill_prompt_template(
     return normalize_dashes(filled)
 
 
-def prompt_sha256(text: str) -> str:
-    """Hash of the final prompt, stored for debugging."""
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
 # ── Component record ──────────────────────────────────────────────────────────
 
 
@@ -375,6 +369,63 @@ def build_component_record(
     return record
 
 
+_CATEGORIES_KEY_RE = re.compile(r'"categories"\s*:\s*\[')
+
+
+def _array_end(text: str, start: int) -> Optional[int]:
+    """Index of the ``]`` closing the array whose ``[`` is at ``start``.
+
+    String-aware, so a bracket inside a category ("You rent [in Tel Aviv]")
+    cannot end the array early.
+    """
+    depth = 0
+    in_string = False
+    escape = False
+
+    for index in range(start, len(text)):
+        char = text[index]
+        if in_string:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "[":
+            depth += 1
+        elif char == "]":
+            depth -= 1
+            if depth == 0:
+                return index
+    return None
+
+
+def replace_categories_in_prompt(prompt_text: str, categories_value: str) -> str:
+    """Rewrite the ``"categories": [...]`` array of an already filled prompt.
+
+    Editing categories after generation cannot go through the marker: it was
+    substituted when the echo was built and no longer exists. Replacing just the
+    array contents keeps every other edit the operator has made to the prompt in
+    the Kvasir editor - a full re-fill from the template would discard them.
+    """
+    match = _CATEGORIES_KEY_RE.search(prompt_text)
+    if not match:
+        raise EchoBuildError(
+            'This echo\'s prompt has no "categories": [ ... ] array to edit. '
+            "It was probably built from a different template."
+        )
+
+    open_bracket = match.end() - 1
+    close_bracket = _array_end(prompt_text, open_bracket)
+    if close_bracket is None:
+        raise EchoBuildError('The "categories" array in this prompt is not closed')
+
+    return prompt_text[: open_bracket + 1] + categories_value + prompt_text[close_bracket:]
+
+
 def load_template(client: KvasirClient, template_echo_id: Any) -> tuple[dict, str, str]:
     """Fetch the template component and its prompt text.
 
@@ -465,14 +516,12 @@ class BuiltEcho:
         echo_id: int,
         editor_url: str,
         prompt_key: str,
-        prompt_hash: str,
         title: str,
         description_html: str,
     ):
         self.echo_id = echo_id
         self.editor_url = editor_url
         self.prompt_key = prompt_key
-        self.prompt_hash = prompt_hash
         self.title = title
         self.description_html = description_html
 
@@ -555,14 +604,12 @@ def create_echo(
         persona=persona,
     )
     client.put_text(destination_key, filled)
-    prompt_hash = prompt_sha256(filled)
     logger.info(
-        "Echo %s prompt written: s3://%s/%s (%d chars, sha256 %s), cloned from s3://%s/%s",
+        "Echo %s prompt written: s3://%s/%s (%d chars), cloned from s3://%s/%s",
         echo_id,
         client.config.courses_bucket,
         destination_key,
         len(filled),
-        prompt_hash[:16],
         client.config.courses_bucket,
         source_key,
     )
@@ -599,7 +646,6 @@ def create_echo(
         echo_id=echo_id,
         editor_url=client.editor_url(echo_id),
         prompt_key=destination_key,
-        prompt_hash=prompt_hash,
         title=design.title,
         description_html=description_html,
     )

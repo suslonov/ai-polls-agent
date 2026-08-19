@@ -37,6 +37,12 @@ Tone of the shortlist — this is a daily poll people play with, not a news dige
 NOT a translation of the title: never restate the story there. Leave it empty if
 no short label fits.
 
+`why_candidate` is one short sentence saying why this makes a good poll - the
+argument it opens, not what happened. NEVER translate or restate the headline.
+For a Russian story write it in Russian; do not produce an English rendering of
+a Russian story anywhere in your answer. For Hebrew and English stories write it
+in English.
+
 Reply with JSON only, in exactly this shape:
 {"selected": [{"id": 0, "rank": 1, "interesting_score": 0, "funny_score": 0,
 "topic": "", "why_candidate": "one short sentence"}]}

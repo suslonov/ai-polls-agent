@@ -26,7 +26,8 @@ collect ─ 19 sources (rss / site index / public Telegram)
    │                         (never sees article bodies)
    ├─ Claude selection       one global shortlist of 10–20, all languages
    └─ enrich                 fetch bodies, translate Hebrew finalists
-                             (Russian and English are never translated)
+                             (Russian is translated only on demand, when the
+                              operator starts it in the English slot)
                              → SQLite → /polls
 ```
 
@@ -93,6 +94,7 @@ Mounted by ai-home-hub at `/polls` (already registered in
 | `GET /api/day/current` · `GET /api/history` | the same state as JSON |
 | `POST /api/select` | set/clear one slot — **409** once *that language* is locked |
 | `POST /api/default-categories` | use the template's own category list for one slot |
+| `POST /api/categories` | edit one generated echo's categories (prompt included) |
 | `POST /api/add-candidate` | promote a collected story onto today's shortlist |
 | `POST /api/start-generation` | lock one language's selection, then create its echo |
 | `POST /api/retry-generation` | retry one language after an error |
@@ -177,15 +179,19 @@ Tuning lives in `config/settings.yaml` under `category_generation`, `parties`,
 
 |  | RU slot | EN slot |
 |---|---|---|
-| Russian story | ✅ | ✗ |
+| Russian story | ✅ | ✅ translated when you press Start |
 | English story | ✗ | ✅ |
 | Hebrew story | ✅ | ✅ *after* `title_en` + `short_en` exist |
 
-Hebrew feeds both slots — the poll is written in the target language from the
-Hebrew source either way, and one Hebrew story may carry both languages of a day
-(two separate echoes, one per target course). Only the EN slot waits for the
-English rendering, because the operator picks from it and the English quiz is
-designed against it.
+The poll is written in the target language from whatever the source says, and
+one story may carry both languages of a day (two separate echoes, one per target
+course).
+
+Nothing is translated in bulk. Hebrew finalists get their English rendering
+during collection, because the EN slot's Hebrew stories are picked and designed
+from it. A Russian story chosen for the EN slot is translated **on demand**, when
+Start is pressed — one call, for that one story. The RU slot never translates
+anything.
 
 Either slot may be left empty; a Russian-only day never touches the English page.
 

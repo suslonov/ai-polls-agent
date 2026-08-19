@@ -208,3 +208,116 @@ def test_clearing_the_slot_clears_the_checkbox(db_path, selected):
     db.set_selection(db_path, DAY, "ru", None, None)
 
     assert db.get_day(db_path, DAY)["ru_default_categories"] == 0
+
+
+# ── Editing the categories of a generated echo ────────────────────────────────
+
+
+@pytest.fixture
+def generated(db_path, settings, secrets, selected, monkeypatch):
+    """One generated RU echo, with its prompt in the fake S3."""
+    from src.category_designer import CategoryResult
+
+    monkeypatch.setattr(workflow.quiz_designer, "design_quiz",
+                        lambda **kwargs: make_design("Опрос дня"))
+    monkeypatch.setattr(workflow.category_designer, "generate_categories",
+                        lambda **kwargs: CategoryResult(categories=["Вы резервист", "Вы студент"]))
+
+    client = FakeKvasirClient()
+    workflow.start_generation(
+        settings, secrets, db_path, DAY, target_language="ru", client=client
+    )
+    return client
+
+
+def test_editing_categories_rewrites_the_prompt_and_the_row(db_path, settings, secrets, generated):
+    key = db.get_echo(db_path, DAY, "ru")["prompt_s3_key"]
+    prompt_before = generated.s3_objects[key]
+
+    result = workflow.update_categories(
+        settings, secrets, db_path, DAY, "ru",
+        ["Вы водитель автобуса", "Вы пассажир", "У вас нет машины"],
+        client=generated,
+    )
+
+    assert result["categories"] == ["Вы водитель автобуса", "Вы пассажир", "У вас нет машины"]
+
+    echo = db.get_echo(db_path, DAY, "ru")
+    assert db.json_list(echo["categories_json"]) == result["categories"]
+
+    prompt = generated.s3_objects[key]
+    assert prompt != prompt_before, "the prompt changed"
+    assert '"Вы водитель автобуса", "Вы пассажир", "У вас нет машины"' in prompt
+    assert "Вы резервист" not in prompt, "the old list is gone"
+
+
+def test_editing_categories_keeps_the_rest_of_the_prompt(db_path, settings, secrets, generated):
+    """Operator edits made in the Kvasir editor must survive a category change."""
+    echo = db.get_echo(db_path, DAY, "ru")
+    key = echo["prompt_s3_key"]
+    generated.s3_objects[key] = generated.s3_objects[key] + "\n\nHAND-WRITTEN NOTE FROM THE EDITOR\n"
+
+    workflow.update_categories(settings, secrets, db_path, DAY, "ru", ["Вы пассажир"],
+                               client=generated)
+
+    prompt = generated.s3_objects[key]
+    assert "HAND-WRITTEN NOTE FROM THE EDITOR" in prompt
+    assert '"categories": ["Вы пассажир"]' in prompt
+
+
+def test_editing_categories_never_touches_the_template(db_path, settings, secrets, generated):
+    template_before = generated.s3_objects["500/text/9001.txt"]
+
+    workflow.update_categories(settings, secrets, db_path, DAY, "ru", ["Вы пассажир"],
+                               client=generated)
+
+    assert generated.s3_objects["500/text/9001.txt"] == template_before
+
+
+def test_blanks_and_duplicates_are_dropped_but_the_wording_is_kept(
+    db_path, settings, secrets, generated
+):
+    result = workflow.update_categories(
+        settings, secrets, db_path, DAY, "ru",
+        ["  Вы пассажир  ", "", "Вы пассажир", "политика", "   "],
+        client=generated,
+    )
+
+    # "политика" would be rejected as a taxonomy label if a model had proposed
+    # it; from the operator it is taken as written.
+    assert result["categories"] == ["Вы пассажир", "политика"]
+
+
+def test_an_empty_list_is_refused(db_path, settings, secrets, generated):
+    with pytest.raises(workflow.WorkflowError, match="at least one category"):
+        workflow.update_categories(settings, secrets, db_path, DAY, "ru", ["", "  "],
+                                   client=generated)
+
+
+def test_editing_categories_before_the_prompt_exists_is_refused(db_path, settings, secrets):
+    db.ensure_day(db_path, DAY)
+    db.upsert_echo(db_path, DAY, "ru", {"kvasir_echo_id": 4242})
+
+    with pytest.raises(workflow.WorkflowError, match="no prompt yet"):
+        workflow.update_categories(settings, secrets, db_path, DAY, "ru", ["Вы пассажир"],
+                                   client=FakeKvasirClient())
+
+
+def test_a_prompt_without_a_categories_array_gives_an_actionable_error(
+    db_path, settings, secrets, generated
+):
+    echo = db.get_echo(db_path, DAY, "ru")
+    generated.s3_objects[echo["prompt_s3_key"]] = "a prompt from some other template"
+
+    with pytest.raises(workflow.WorkflowError, match="categories"):
+        workflow.update_categories(settings, secrets, db_path, DAY, "ru", ["Вы пассажир"],
+                                   client=generated)
+
+
+def test_a_bracket_inside_a_category_does_not_end_the_array():
+    from src.echo_builder import replace_categories_in_prompt
+
+    text = '{"categories": ["You rent [in Tel Aviv]", "You own"], "locale": "en"}'
+    updated = replace_categories_in_prompt(text, '"You commute"')
+
+    assert updated == '{"categories": ["You commute"], "locale": "en"}'

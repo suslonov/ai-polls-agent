@@ -22,8 +22,8 @@ logger = logging.getLogger(__name__)
 MAX_SNIPPET_CHARS = 400
 
 # Aim for at least this many candidates per operator slot when the day's
-# material allows it (plan §7).
-LANGUAGE_FLOOR = 5
+# material allows it (plan §7), doubled with the shortlist itself.
+LANGUAGE_FLOOR = 10
 
 # Prompt text lives in config/prompts/prefilter.txt (see src/prompts.py).
 PROMPT_NAME = "prefilter"

@@ -32,7 +32,8 @@ def test_slot_eligibility_by_source_language():
     hebrew_translated = make_item(language="he", title_en="Translated", short_en="One sentence.")
     hebrew_raw = make_item(language="he")
 
-    assert russian.eligible_for("ru") and not russian.eligible_for("en")
+    # Russian feeds both slots: the EN slot translates it on Start.
+    assert russian.eligible_for("ru") and russian.eligible_for("en")
     assert english.eligible_for("en") and not english.eligible_for("ru")
 
     # Hebrew feeds both slots.

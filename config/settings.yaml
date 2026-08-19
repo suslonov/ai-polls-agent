@@ -17,9 +17,11 @@ collection:
   lookback_hours: 30
   max_items_per_source: 30
   max_candidates_before_prefilter: 250
-  prefilter_keep: 45
-  final_candidates_min: 10
-  final_candidates_max: 20
+  # The shortlist is twice its original size, so the prefilter has to hand the
+  # selector twice as much material to choose from.
+  prefilter_keep: 90
+  final_candidates_min: 20
+  final_candidates_max: 40
   max_article_chars_for_selector: 800
   # Body text kept per finalist. Generous on purpose: the chat prompt carries the
   # raw article, not just the model's summary.

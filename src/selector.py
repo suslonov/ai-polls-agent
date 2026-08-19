@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -59,6 +60,12 @@ def build_payload(items: list[NewsItem], max_chars: int, now: datetime) -> list[
 MAX_TOPIC_WORDS = 3
 MAX_TOPIC_CHARS = 32
 
+# A Russian story must never come back with an English rendering attached: the
+# card shows `why_candidate` under the title, where an English sentence about a
+# Russian headline reads as a translation nobody asked for (and costs tokens to
+# produce). Cheapest reliable test is the script the sentence is written in.
+_CYRILLIC_RE = re.compile(r"[\u0400-\u04FF]")
+
 
 def clean_topic(value: str) -> str:
     """Keep a short label, drop a restated headline."""
@@ -71,7 +78,22 @@ def clean_topic(value: str) -> str:
     return topic.lower()
 
 
-def parse_picks(response: dict, valid_ids: set[int]) -> list[SelectorPick]:
+def clean_why(value: str, source_language: str = "") -> str:
+    """Drop an English restatement of a non-English story."""
+    why = " ".join(str(value or "").strip().split())
+    if not why:
+        return ""
+    if source_language == "ru" and not _CYRILLIC_RE.search(why):
+        logger.info("Dropping English why_candidate for a Russian story: %r", why)
+        return ""
+    return why
+
+
+def parse_picks(
+    response: dict,
+    valid_ids: set[int],
+    languages: Optional[dict[int, str]] = None,
+) -> list[SelectorPick]:
     """Validate the model's shortlist against the ids we actually sent."""
     picks: list[SelectorPick] = []
     seen: set[int] = set()
@@ -93,7 +115,9 @@ def parse_picks(response: dict, valid_ids: set[int]) -> list[SelectorPick]:
                 interesting_score=float(raw.get("interesting_score", 0) or 0),
                 funny_score=float(raw.get("funny_score", 0) or 0),
                 topic=clean_topic(raw.get("topic", "")),
-                why_candidate=str(raw.get("why_candidate", "") or "").strip(),
+                why_candidate=clean_why(
+                    raw.get("why_candidate", ""), (languages or {}).get(item_id, "")
+                ),
             )
         )
 
@@ -134,7 +158,11 @@ def select_candidates(
         prompt=prompt,
         max_tokens=max_tokens,
     )
-    picks = parse_picks(response, valid_ids=set(range(len(items))))
+    picks = parse_picks(
+        response,
+        valid_ids=set(range(len(items))),
+        languages={index: item.source_language for index, item in enumerate(items)},
+    )
 
     if not picks:
         raise LLMError("Claude returned no usable selection")

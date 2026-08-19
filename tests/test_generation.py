@@ -78,7 +78,6 @@ def test_start_generation_creates_one_echo_per_selected_language(
         assert row["kvasir_echo_id"]
         assert row["status"] == EchoStatus.editing.value
         assert row["editor_url"].startswith("https://quizly.pub/echo-edit?id=")
-        assert row["prompt_sha256"]
 
     # Two component_update calls per echo: create, then persist assets.text.
     assert len(client.component_updates) == 4
@@ -194,14 +193,15 @@ def test_generation_rejects_a_story_that_does_not_fit_the_slot(
     db.ensure_day(db_path, DAY)
     english = seed_candidate(db_path, language="en", source_id="toi_en",
                              url="https://timesofisrael.com/x", title="An English story today")
-    russian = seed_candidate(db_path, language="ru", source_id="newsru_ru",
-                             url="https://newsru.co.il/x", title="Русская новость дня")
 
     with pytest.raises(workflow.WorkflowError, match="Russian slot"):
         workflow.generate_language(settings, secrets, db_path, DAY, "ru", english, "funny",
                                    client=FakeKvasirClient())
-    with pytest.raises(workflow.WorkflowError, match="English slot"):
-        workflow.generate_language(settings, secrets, db_path, DAY, "en", russian, "funny",
+
+    hebrew_raw = seed_candidate(db_path, language="he", source_id="ynet_he",
+                                url="https://ynet.co.il/x", title="כותרת בעברית ארוכה מספיק")
+    with pytest.raises(workflow.WorkflowError, match="no English translation yet"):
+        workflow.generate_language(settings, secrets, db_path, DAY, "en", hebrew_raw, "funny",
                                    client=FakeKvasirClient())
 
 
@@ -299,3 +299,92 @@ def test_categories_are_persisted_with_their_provenance(
     assert db.json_list(row["categories_json"])[0] == "Вы резервист"
     assert row["category_fallback_used"] == 0
     assert row["category_party_used"] == 0
+
+
+# ── Russian in the English slot ───────────────────────────────────────────────
+
+
+@pytest.fixture
+def translator(monkeypatch):
+    """Record every on-demand translation the workflow asks for."""
+    calls: list[str] = []
+
+    def translate_item(item, api_key, model):
+        calls.append(item.source_language)
+        return ("Ben Gurion airport delays", "Only 12% of flights leave on time.")
+
+    monkeypatch.setattr(workflow.prefilter, "translate_item", translate_item)
+    return calls
+
+
+def test_a_russian_story_is_translated_when_the_english_slot_starts(
+    db_path, settings, secrets, fake_designer, translator
+):
+    db.ensure_day(db_path, DAY)
+    russian = seed_candidate(db_path, language="ru", source_id="newsru_ru",
+                             url="https://newsru.co.il/x", title="Русская новость дня")
+    db.set_selection(db_path, DAY, "en", russian, "important")
+
+    workflow.start_generation(
+        settings, secrets, db_path, DAY, target_language="en", client=FakeKvasirClient()
+    )
+
+    assert translator == ["ru"], "translated once, on demand"
+    stored = db.get_item(db_path, russian)
+    assert stored["title_en"] == "Ben Gurion airport delays"
+    assert stored["short_en"] == "Only 12% of flights leave on time."
+
+    # The English quiz is designed against the English rendering.
+    assert fake_designer[0]["item"].title_en == "Ben Gurion airport delays"
+
+
+def test_the_russian_slot_never_triggers_a_translation(
+    db_path, settings, secrets, fake_designer, translator
+):
+    db.ensure_day(db_path, DAY)
+    russian = seed_candidate(db_path, language="ru", source_id="newsru_ru",
+                             url="https://newsru.co.il/x", title="Русская новость дня")
+    db.set_selection(db_path, DAY, "ru", russian, "funny")
+
+    workflow.start_generation(
+        settings, secrets, db_path, DAY, target_language="ru", client=FakeKvasirClient()
+    )
+
+    assert translator == [], "the Russian quiz is written from the Russian original"
+    assert db.get_item(db_path, russian)["title_en"] is None
+
+
+def test_an_already_translated_story_is_not_translated_again(
+    db_path, settings, secrets, fake_designer, translator
+):
+    db.ensure_day(db_path, DAY)
+    hebrew = seed_candidate(db_path, language="he", source_id="ynet_he",
+                            url="https://ynet.co.il/x", title="כותרת בעברית ארוכה מספיק",
+                            title_en="A Hebrew headline", short_en="One sentence.")
+    db.set_selection(db_path, DAY, "en", hebrew, "important")
+
+    workflow.start_generation(
+        settings, secrets, db_path, DAY, target_language="en", client=FakeKvasirClient()
+    )
+
+    assert translator == [], "collection already produced this one"
+
+
+def test_a_failed_translation_stops_before_anything_is_created(
+    db_path, settings, secrets, fake_designer, monkeypatch
+):
+    monkeypatch.setattr(workflow.prefilter, "translate_item",
+                        lambda item, api_key, model: None)
+    db.ensure_day(db_path, DAY)
+    russian = seed_candidate(db_path, language="ru", source_id="newsru_ru",
+                             url="https://newsru.co.il/x", title="Русская новость дня")
+    db.set_selection(db_path, DAY, "en", russian, "important")
+    client = FakeKvasirClient()
+
+    result = workflow.start_generation(
+        settings, secrets, db_path, DAY, target_language="en", client=client
+    )
+
+    assert result["errors"], result
+    assert "could not translate" in result["errors"][0]["error"]
+    assert client.component_updates == [], "no echo was created"

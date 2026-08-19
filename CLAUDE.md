@@ -17,12 +17,14 @@ collect → shortlist → operator picks → Kvasir echo → operator edits → 
   that day. `POST /api/select` returns 409 afterwards.
 - Previous days are read-only history.
 - Up to one RU selection and one EN selection per day; either may be empty.
-- Slot eligibility: RU slot accepts `ru` and `he`; EN slot accepts `en` and
-  `he`. A Hebrew story may fill both slots on the same day (two separate
-  echoes, one per target course).
+- Slot eligibility: RU slot accepts `ru` and `he`; EN slot accepts `en`, `ru`
+  and `he`. One story may fill both slots on the same day (two separate echoes,
+  one per target course).
 - HE is eligible for the EN slot only after English translation (`title_en`
-  **and** `short_en` must exist). The RU slot has no such precondition — the
-  Russian quiz is designed from the Hebrew original.
+  **and** `short_en` must exist), because collection already produced it. RU in
+  the EN slot has no precondition: it is translated **on demand** when the
+  operator presses Start, for that one story only. The RU slot never triggers a
+  translation — the Russian quiz is written from the Russian or Hebrew original.
 - Every selected item must be marked `important` or `funny`.
 - Do not create party-preference quizzes.
 - Gemini is the cheap layer only: batch prefilter and HE→EN translation.
@@ -42,6 +44,11 @@ collect → shortlist → operator picks → Kvasir echo → operator edits → 
   question**, with a separate prompt per mode, and validated before use.
 - Party categories only on genuinely political stories, and never in `funny`
   fallback. Party names come from the template's own `DEFAULT=` payload first.
+- Categories stay editable after generation: `workflow.update_categories()`
+  rewrites the `"categories": [ … ]` array of the prompt already in S3 (never a
+  re-fill from the template, which would discard the operator's editor changes)
+  and the `categories_json` column. An operator's list is taken as written — the
+  generator's validation judges a model's output, not a human's.
 - Each slot card carries "use default categories, don't invent": with it on,
   generation substitutes the template's `DEFAULT=` payload verbatim and makes no
   model call for categories. The party gate does not apply to it — it is an
@@ -49,9 +56,14 @@ collect → shortlist → operator picks → Kvasir echo → operator edits → 
   template with no payload falls back to the curated pool, still without a model.
 - Only Hebrew is translated (HE→EN, and only for shortlisted stories). Russian
   fills the RU slot from the Russian original and is never sent to the
-  translator. `topic` is a short filing label, never a restated or translated
-  headline — `selector.clean_topic()` drops anything longer, because the card
-  shows the topic above the title where a sentence reads as a translation.
+  translator during collection — only `workflow._translate_on_demand()` does,
+  for the single story picked for the EN slot.
+  **No English rendering of a Russian story may reach the card**,
+  and the selector is the one that keeps producing them:
+  `selector.clean_topic()` drops a topic that is a restated headline rather than
+  a short filing label, and `selector.clean_why()` drops a `why_candidate` with
+  no Cyrillic on a Russian story. `render.candidate_view()` shows `title_en`
+  only for Hebrew. The operator-added marker is written in the story's language.
 - A collection run voids the day's pending selection (story, tone, category
   choice) for every language that is not locked: the shortlist it replaced is
   what those picks referred to. Locked languages keep everything.

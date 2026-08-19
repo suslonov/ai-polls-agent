@@ -20,6 +20,7 @@ from src import (
     category_designer,
     db,
     echo_builder,
+    prefilter,
     publisher,
     quiz_designer,
     telegram_publish,
@@ -29,6 +30,7 @@ from src.kvasir_client import KvasirClient, KvasirError
 from src.models import EchoStatus, NewsItem, PublishStatus, Settings, WorkflowStatus
 from src.scroll_lookup import ScrollLookup, ScrollLookupError
 from src.secrets import Secrets
+from src.text_utils import clean
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +78,44 @@ def item_from_row(row: dict) -> NewsItem:
 # ── Generation ────────────────────────────────────────────────────────────────
 
 
+def _translate_on_demand(
+    item: NewsItem,
+    target_language: str,
+    settings: Settings,
+    secrets: Secrets,
+    db_path: Path,
+) -> None:
+    """Give a non-English story its English rendering, just before it is needed.
+
+    Only for the EN slot, only for the single selected story, and only when the
+    rendering is missing. The English quiz is designed from ``title_en`` and
+    ``short_en``, so this is a precondition of the design step rather than a
+    collection-time enrichment.
+    """
+    if target_language != "en" or item.source_language == "en":
+        return
+    if item.title_en and item.short_en:
+        return
+
+    logger.info(
+        "Translating item %s (%s) for the English slot", item.id, item.source_language
+    )
+    translated = prefilter.translate_item(
+        item, api_key=secrets.google_api_key, model=settings.models.prefilter
+    )
+    if translated is None:
+        raise WorkflowError(
+            f"could not translate this {item.source_language.upper()} story into English; "
+            "nothing was created - press Start again to retry"
+        )
+
+    item.title_en, item.short_en = translated
+    if item.id:
+        db.update_translation(db_path, item.id, item.title_en, item.short_en)
+
+
+
+
 def generate_language(
     settings: Settings,
     secrets: Secrets,
@@ -104,7 +144,12 @@ def generate_language(
             raise WorkflowError("this Hebrew story has no English translation yet")
         if target_language == "ru":
             raise WorkflowError("the Russian slot accepts Russian or Hebrew stories")
-        raise WorkflowError("the English slot accepts English or Hebrew stories")
+        raise WorkflowError("the English slot accepts English, Russian or Hebrew stories")
+
+    # Translation happens here and nowhere else for Russian: on demand, for the
+    # one story the operator actually chose for the English slot, never in bulk
+    # during collection.
+    _translate_on_demand(item, target_language, settings, secrets, db_path)
 
     existing = db.get_echo(db_path, day, target_language) or {}
     existing_echo_id = None if force_new else existing.get("kvasir_echo_id")
@@ -263,7 +308,6 @@ def generate_language(
                 "kvasir_echo_id": built.echo_id,
                 "editor_url": built.editor_url,
                 "prompt_s3_key": built.prompt_key,
-                "prompt_sha256": built.prompt_hash,
                 "status": EchoStatus.editing.value,
                 "error": None,
             },
@@ -392,6 +436,81 @@ def close_language(db_path: Path, day: str, target_language: str) -> dict:
     result = db.close_echo(db_path, day, target_language)
     _settle_day_status(db_path, day)
     return result
+
+
+def update_categories(
+    settings: Settings,
+    secrets: Secrets,
+    db_path: Path,
+    day: str,
+    target_language: str,
+    categories: list[str],
+    client: Optional[KvasirClient] = None,
+) -> dict:
+    """Replace one echo's participant categories, prompt included.
+
+    The categories live in two places once an echo exists: the ``categories_json``
+    column and the ``"categories": [ ... ]`` array of the prompt already written
+    to S3. Both are updated here, and only that array of the prompt is touched -
+    edits made in the Kvasir editor survive.
+
+    The operator's own list is taken as written (blanks and duplicates dropped);
+    it is not put through the generator's validation, which exists to judge a
+    model's output, not a human's.
+    """
+    secrets.require_kvasir()
+
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for value in categories or []:
+        category = clean(str(value or ""))
+        key = category.casefold()
+        if category and key not in seen:
+            seen.add(key)
+            cleaned.append(category)
+
+    if not cleaned:
+        raise WorkflowError("give at least one category")
+
+    echo = db.get_echo(db_path, day, target_language)
+    if not echo:
+        raise WorkflowError(f"no {target_language.upper()} echo exists for {day}")
+    prompt_key = echo.get("prompt_s3_key")
+    if not prompt_key:
+        raise WorkflowError(
+            "this echo has no prompt yet - finish generating it before editing categories"
+        )
+
+    client = client or KvasirClient(secrets, settings.kvasir)
+
+    try:
+        prompt_text = client.get_text(prompt_key)
+        updated = echo_builder.replace_categories_in_prompt(
+            prompt_text, category_designer.serialize_for_template(cleaned)
+        )
+        client.put_text(prompt_key, updated)
+    except (KvasirError, echo_builder.EchoBuildError) as exc:
+        raise WorkflowError(f"could not update the prompt at {prompt_key}: {exc}") from exc
+
+    db.upsert_echo(
+        db_path,
+        day,
+        target_language,
+        {
+            "categories_json": json.dumps(cleaned, ensure_ascii=False),
+            "categories_default_used": 0,
+            "category_fallback_used": 0,
+        },
+    )
+    logger.info(
+        "Categories for %s/%s edited by the operator (%d): %s",
+        day, target_language, len(cleaned), cleaned,
+    )
+    return {
+        "language": target_language,
+        "categories": cleaned,
+        "prompt_s3_key": prompt_key,
+    }
 
 
 def retry_language(

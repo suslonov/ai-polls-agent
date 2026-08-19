@@ -129,7 +129,6 @@ CREATE TABLE IF NOT EXISTS echoes (
     title                    TEXT,
     description_html         TEXT,
     prompt_s3_key            TEXT,
-    prompt_sha256            TEXT,
     editor_url               TEXT,
 
     picture_suggestions_json TEXT DEFAULT '[]',
@@ -580,13 +579,19 @@ def add_manual_candidate(db_path: Path, item_id: int) -> bool:
         next_rank = conn.execute(
             "SELECT COALESCE(MAX(selector_rank), 0) + 1 AS r FROM news_items WHERE final_candidate = 1"
         ).fetchone()["r"]
+        # The marker is written in the story's own language: a Russian card must
+        # never carry an English line where the reason goes.
+        language = conn.execute(
+            "SELECT source_language FROM news_items WHERE id = ?", (item_id,)
+        ).fetchone()["source_language"]
+        marker = "добавлено оператором" if language == "ru" else "added by the operator"
         conn.execute(
             """UPDATE news_items
                SET final_candidate = 1,
                    selector_rank = ?,
-                   why_candidate = COALESCE(NULLIF(why_candidate, ''), 'added by the operator')
+                   why_candidate = COALESCE(NULLIF(why_candidate, ''), ?)
                WHERE id = ?""",
-            (next_rank, item_id),
+            (next_rank, marker, item_id),
         )
     return True
 
@@ -1027,7 +1032,7 @@ def upsert_echo(db_path: Path, day: str, target_language: str, fields: dict[str,
     now = _now()
     allowed = {
         "news_item_id", "tone", "kvasir_course_id", "kvasir_echo_id", "template_echo_id",
-        "title", "description_html", "prompt_s3_key", "prompt_sha256", "editor_url",
+        "title", "description_html", "prompt_s3_key", "editor_url",
         "picture_suggestions_json", "yes_no_question", "scroll_id", "scroll_public_url",
         "status", "finalized_at", "error",
         "categories_json", "categories_default_used", "category_fallback_used",

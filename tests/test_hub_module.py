@@ -123,8 +123,10 @@ def test_slot_eligibility_is_enforced_by_the_api(module):
     assert call(module, "POST", "/api/select", {"slot": "ru", "item_id": hebrew_ready, **ok})[0] == 200
     assert call(module, "POST", "/api/select", {"slot": "ru", "item_id": hebrew_raw, **ok})[0] == 200
 
+    # Russian may fill the English slot too; it is translated when Start is pressed.
+    assert call(module, "POST", "/api/select", {"slot": "en", "item_id": russian, **ok})[0] == 200
+
     # Rejections
-    assert call(module, "POST", "/api/select", {"slot": "en", "item_id": russian, **ok})[0] == 400
     assert call(module, "POST", "/api/select", {"slot": "ru", "item_id": english, **ok})[0] == 400
 
     status, _, data, _ = call(module, "POST", "/api/select",
@@ -249,7 +251,7 @@ def test_add_candidate_promotes_a_collected_story(module):
     assert status == 200 and data["added"] is True
     candidates = db.get_final_candidates(module.db_path)
     assert [row["id"] for row in candidates] == [item_id]
-    assert candidates[0]["why_candidate"] == "added by the operator"
+    assert candidates[0]["why_candidate"] in ("added by the operator", "добавлено оператором")
 
     # It is now selectable on the main page.
     _, _, current, _ = call(module, "GET", "/api/day/current")
@@ -429,3 +431,34 @@ def test_the_flag_is_visible_in_the_state_and_on_the_page(module, today):
     html = body.decode()
     assert "setDefaultCategories(" in html
     assert html.count("use default categories") == 2, "one checkbox per slot card"
+
+
+def test_the_panel_offers_an_editable_category_box(module, today, monkeypatch):
+    from src import db
+
+    db.upsert_echo(module.db_path, today, "ru", {
+        "kvasir_echo_id": 4242,
+        "prompt_s3_key": "501/text/4242.ru.txt",
+        "categories_json": '["Вы резервист", "Вы студент"]',
+    })
+
+    _, _, _, page = call(module, "GET", "/")
+    html = page.decode()
+
+    assert 'id="cats-ru"' in html
+    assert "saveCategories(" in html
+    assert "Вы резервист\nВы студент" in html, "one per line, ready to edit"
+
+
+def test_edit_categories_endpoint_validates_its_input(module):
+    status, _, data, _ = call(module, "POST", "/api/categories",
+                              {"language": "de", "categories": ["x"]})
+    assert status == 400 and "language" in data["error"]
+
+    status, _, data, _ = call(module, "POST", "/api/categories",
+                              {"language": "ru", "categories": "not a list"})
+    assert status == 400 and "list" in data["error"]
+
+    status, _, data, _ = call(module, "POST", "/api/categories",
+                              {"language": "ru", "categories": ["Вы пассажир"]})
+    assert status == 400 and "no RU echo" in data["error"], "nothing generated yet"

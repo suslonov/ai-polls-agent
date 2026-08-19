@@ -1,29 +1,33 @@
 # Problems
 
-when the script publishes a new quiz into daily-israel-polls pages, it should not delete anything even if there is a quiz for this date. Just add a new one to the head of the list.
+- pls remove sha256: e73c81ebbdae918e… from the interface and possible from calculation if it is not needed for some purposes, I dont need it
 
-**Done.** `publisher.update_page()` is append-only now. The regex that used to
-strip an existing entry for the same `(day, language)` before inserting the new
-one is gone, so a second poll on a day that already has one is added *above* it
-and both stay. The chronological sort is stable, so same-day entries keep
-insertion order — the fresh one on top of the poll it joins.
+**Done — it was purely informational, so it is gone entirely, not just hidden.**
 
-Repeated Finalize clicks still cannot duplicate an entry, but that is enforced
-earlier and more precisely: `workflow.finalize` skips the page write once a
-publish event exists for `{day}:{language}:{echo_id}:{scroll_id}`. Closing a
-poll and building a second one gives a different key, which is exactly the case
-that should append.
+Nothing depended on it: it was never compared, verified or sent anywhere. It was
+computed after writing the prompt, stored, logged and shown under the prompt path
+in the panel.
 
-The only thing that still removes an entry is the configured cap,
-`publishing.max_entries_per_page` (60) — and it now logs when it drops
-something, and accepts **0** to keep every poll ever published:
+Removed from:
 
-    max_entries_per_page: 0
+- the panel (`templates/hub/index.jinja2`) and the view model (`render.echo_view`);
+- the calculation — `echo_builder.prompt_sha256()` is deleted, along with
+  `BuiltEcho.prompt_hash` and the `hashlib` import;
+- the log line, which now reads `Echo 1442 prompt written: s3://… (11613 chars),
+  cloned from s3://…`;
+- both writers (`workflow.generate_language` and `workflow.update_categories`)
+  and the echo-write allowlist in `db.py`, so nothing can set it again;
+- the schema, so a new database has no such column.
 
-Nothing outside the `<!-- POLLS:START -->` … `<!-- POLLS:END -->` region is ever
-touched, and the other language's page is still never opened.
+The `prompt_sha256` column still exists in your `~/polls_data/state.db` with its
+old values — SQLite can drop a column, but a dead column costs nothing and
+rewriting a live table for cosmetics is not worth the risk. Nothing reads it. Say
+the word if you want it dropped.
 
-Tests: two polls on one day both surviving with the newest on top, an earlier
-entry surviving byte for byte across a later publish, the other language
-untouched, the cap being switchable off, and the existing repeated-Finalize test
-that still asserts a single entry. 229 tests pass.
+Other sha256 uses are unrelated and stay: `extraction.content_hash()` for exact
+duplicate detection and `dedupe` for story-group keys. Neither is shown in the
+interface.
+
+245 tests pass (the two tests that only asserted the hash existed are gone; the
+category-edit test now compares the prompt text itself, which is what it actually
+cared about).

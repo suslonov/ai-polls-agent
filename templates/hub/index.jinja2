@@ -112,6 +112,12 @@
     tr:last-child td { border-bottom: none; }
 
     ul.pictures { margin: .4rem 0 .2rem 1.1rem; font-size: .83rem; color: #374151; }
+    textarea.categories {
+      width: 100%; font: inherit; font-size: .83rem; line-height: 1.5; color: #374151;
+      border: 1px solid var(--border); border-radius: 8px; padding: .4rem .55rem;
+      margin-top: .3rem; resize: vertical; background: var(--surface);
+    }
+    textarea.categories:focus { outline: none; border-color: var(--accent); }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .78rem; }
 
     #busy {
@@ -246,21 +252,23 @@ template's own DEFAULT list instead of designing participants for this story">
         {% if echo.prompt_location %}
         <div class="meta mono" style="margin-top:.4rem; word-break: break-all;">
           prompt: {{ echo.prompt_location }}
-          {% if echo.prompt_sha256 %}<br>sha256: {{ echo.prompt_sha256[:16] }}…{% endif %}
           {% if echo.template_echo_id %}<br>from template echo {{ echo.template_echo_id }}{% endif %}
         </div>
         {% endif %}
 
-        {% if echo.categories %}
+        {% if echo.categories or echo.prompt_location %}
         <div class="meta" style="margin-top:.4rem;">
           Categories ({{ echo.categories | length }})
           {% if echo.categories_default_used %}<span class="badge">template defaults</span>{% endif %}
           {% if echo.category_party_used %}<span class="badge">parties</span>{% endif %}
           {% if echo.category_fallback_used %}<span class="badge status-editing">fallback</span>{% endif %}
         </div>
-        <ul class="pictures">
-          {% for category in echo.categories %}<li>{{ category }}</li>{% endfor %}
-        </ul>
+        <textarea class="categories" id="cats-{{ echo.language }}" rows="{{ [(echo.categories | length) + 1, 4] | max }}"
+                  spellcheck="false">{{ echo.categories | join('\n') }}</textarea>
+        <div class="row" style="margin-top:.3rem;">
+          <button class="small" onclick="saveCategories('{{ echo.language }}')">Save categories</button>
+          <span class="meta">one per line - rewrites this echo's prompt, keeps your other edits</span>
+        </div>
         {% endif %}
 
         {% if echo.picture_suggestions %}
@@ -460,6 +468,12 @@ template's own DEFAULT list instead of designing participants for this story">
 
     function select(slot, itemId, tone) {
       return post("/api/select", { slot: slot, item_id: itemId, tone: itemId ? tone : null });
+    }
+
+    function saveCategories(language) {
+      const box = document.getElementById("cats-" + language);
+      const categories = box.value.split("\n").map(line => line.trim()).filter(Boolean);
+      return post("/api/categories", { language: language, categories: categories });
     }
 
     function setDefaultCategories(slot, enabled) {

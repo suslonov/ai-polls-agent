@@ -50,7 +50,9 @@ def candidate_view(row: dict, timezone_name: str) -> dict:
         "source_type": row.get("source_type"),
         "published_at": _local_time(row.get("published_at") or row.get("first_seen_at"), timezone_name),
         "title_original": row.get("title_original") or "",
-        "title_en": title_en if language != "en" else None,
+        # Only Hebrew is translated. Russian cards must never carry an English
+        # rendering of the headline, even if a stray title_en ever appears.
+        "title_en": title_en if language == "he" else None,
         "summary": row.get("short_en") or row.get("snippet_original") or row.get("dek_original") or "",
         "topic": row.get("topic") or "",
         "interesting_score": row.get("selector_interesting_score"),
@@ -61,7 +63,7 @@ def candidate_view(row: dict, timezone_name: str) -> dict:
         # Slot eligibility: Hebrew feeds both slots, but the EN slot needs the
         # English rendering first.
         "eligible_ru": language in ("ru", "he"),
-        "eligible_en": language == "en" or (language == "he" and has_translation),
+        "eligible_en": language in ("en", "ru") or (language == "he" and has_translation),
         "translation_missing": language == "he" and not has_translation,
     }
 
@@ -80,7 +82,6 @@ def echo_view(
         "template_echo_id": row.get("template_echo_id") or "",
         # Where this echo's filled prompt actually lives, so it can be inspected.
         "prompt_location": (f"s3://{courses_bucket}/{prompt_key}" if prompt_key else ""),
-        "prompt_sha256": row.get("prompt_sha256") or "",
         "title": row.get("title") or "",
         "tone": row.get("tone") or "",
         "news_item_id": row.get("news_item_id"),
@@ -257,7 +258,7 @@ def build_collected_state(
                     row.get("published_at") or row.get("first_seen_at"), timezone_name
                 ),
                 "title": row.get("title_original") or "",
-                "title_en": row.get("title_en") if language != "en" else None,
+                "title_en": row.get("title_en") if language == "he" else None,
                 "url": row.get("url"),
                 "topic": row.get("topic") or "",
                 "prefilter_keep": bool(row.get("prefilter_keep")),
